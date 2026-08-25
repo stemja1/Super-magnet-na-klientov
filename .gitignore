@@ -1,0 +1,39 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.env
+app.db
+*.sqlite3
+
+# ---- Models (large binaries, do not commit) ----
+models/gguf/
+*.gguf
+
+# ---- Node / Frontend ----
+node_modules/
+dist/
+frontend/dist/
+npm-debug.log*
+
+# ---- Tauri ----
+frontend/src-tauri/target/
+
+# ---- Secrets / encryption ----
+.enc_key
+*.key
+
+# ---- Editors / OS ----
+.vscode/
+.idea/
+.DS_Store
+
+# ---- Tool caches ----
+.npm/
+.cache/
+.pytest_cache/

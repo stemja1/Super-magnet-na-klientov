@@ -1,0 +1,46 @@
+# Lokálne dev prostredie pre Super magnet na klientov.
+# Spustenie: docker compose -f infrastructure/docker-compose.yml up --build
+version: "3.9"
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=sqlite:///./app.db      # MVP: SQLite. Pre Postgres zmeň na postgresql://...
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_MODEL_PATH=/models                # GGUF modely (mountnuté nižšie)
+      - LLM_GPU_LAYERS=-1                     # -1 = automaticky na GPU (RX 7700 XT)
+      - CORS_ORIGINS=*
+    volumes:
+      - ./backend:/app
+      - model-cache:/models
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # Voliteľná Postgres pre produkčný režim. MVP beží na SQLite (vyššie).
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=supermagnet
+      - POSTGRES_PASSWORD=supermagnet
+      - POSTGRES_DB=supermagnet
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  model-cache:

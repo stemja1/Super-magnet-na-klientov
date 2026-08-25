@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: Super magnet na klientov — Backend API
+  description: |
+    Lokálny, open-source Apollo.io klon pre slovenský B2B trh.
+    LLM inference prebieha výhradne lokálne (llama.cpp / GGUF).
+  version: 0.1.0
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8000
+    description: Lokálny dev backend
+
+tags:
+  - name: system
+  - name: llm
+  - name: auth
+    description: "PLANNED (Sprint 1)"
+  - name: leads
+    description: "PLANNED (Sprint 1)"
+  - name: embeddings
+    description: "PLANNED (Sprint 1)"
+  - name: email
+    description: "PLANNED (Sprint 2)"
+  - name: workflows
+    description: "PLANNED (Sprint 3)"
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Zdravotný stav služby
+      operationId: getHealth
+      responses:
+        "200":
+          description: Služba beží
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  llm_backend: { type: string, example: mock }
+                  version: { type: string, example: 0.1.0 }
+
+  /api/llm/prompt:
+    post:
+      tags: [llm]
+      summary: Spusti lokálny LLM prompt (mock fallback ak model chýba)
+      operationId: postLlmPrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LLMPromptRequest"
+            example:
+              prompt: "Ohodnoť tento lead: firma 50 zamestnancov, IT sektor, rast tržieb."
+              model_hint: "7b"
+              top_k: 40
+              max_tokens: 256
+              temperature: 0.7
+              use_rag: false
+      responses:
+        "200":
+          description: Vygenerovaná odpoveď
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LLMPromptResponse"
+              example:
+                text: "[MOCK] Lokálny LLM model zatiaľ nie je načítaný..."
+                backend: mock
+                model: mock-0
+                model_hint: "7b"
+                tokens_used: 34
+                finish_reason: stop
+                cached: false
+        "422":
+          description: Chyba validácie vstupu
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+
+  /api/llm/status:
+    get:
+      tags: [llm]
+      summary: Stav LLM Orchestratora
+      operationId: getLlmStatus
+      responses:
+        "200":
+          description: Backend a načítaný model
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  backend: { type: string, example: llama_cpp }
+                  model: { type: string, example: mistral-7b-instruct-v0.3.Q4_K_M.gguf }
+                  model_loaded: { type: boolean, example: true }
+
+  # ---- PLANNED ENDPOINTS (Sprint 1+) -----------------------------------
+  /api/auth/register:
+    post:
+      tags: [auth]
+      summary: "[PLANNED] Registrácia lokálneho účtu"
+      description: "Implementácia v Sprinte 1."
+      responses:
+        "201": { description: "Účet vytvorený" }
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: "[PLANNED] Login, vráti JWT"
+      responses:
+        "200": { description: "JWT token" }
+  /api/leads/import:
+    post:
+      tags: [leads]
+      summary: "[PLANNED] Upload CSV, validácia, enrichment job"
+      responses:
+        "202": { description: "Enrichment job zaradený" }
+  /api/leads:
+    get:
+      tags: [leads]
+      summary: "[PLANNED] Zoznam leadov s filtrami a pagination"
+      responses:
+        "200": { description: "Zoznam leadov" }
+  /api/embeddings/upsert:
+    post:
+      tags: [embeddings]
+      summary: "[PLANNED] Upsert dokumentu do FAISS"
+      responses:
+        "200": { description: "Dokument indexovaný" }
+  /api/embeddings/search:
+    get:
+      tags: [embeddings]
+      summary: "[PLANNED] Query -> top_k výsledkov"
+      responses:
+        "200": { description: "Výsledky vyhľadávania" }
+  /api/email/send:
+    post:
+      tags: [email]
+      summary: "[PLANNED] Odoslanie emailu cez Gmail connector"
+      responses:
+        "200": { description: "Email odoslaný" }
+  /api/workflows/execute:
+    post:
+      tags: [workflows]
+      summary: "[PLANNED] Spustenie workflow pre lead"
+      responses:
+        "200": { description: "Workflow spustený" }
+
+components:
+  schemas:
+    LLMPromptRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string, minLength: 1, maxLength: 16000 }
+        model_hint: { type: string, enum: [7b, 3b], default: "7b" }
+        top_k: { type: integer, minimum: 0, maximum: 100, default: 40 }
+        max_tokens: { type: integer, minimum: 1, maximum: 4096, default: 256 }
+        temperature: { type: number, minimum: 0, maximum: 2, default: 0.7 }
+        use_rag: { type: boolean, default: false }
+    LLMPromptResponse:
+      type: object
+      required: [text, backend, model]
+      properties:
+        text: { type: string }
+        backend: { type: string, enum: [llama_cpp, mock] }
+        model: { type: string }
+        model_hint: { type: string, nullable: true }
+        tokens_used: { type: integer, nullable: true }
+        finish_reason: { type: string, nullable: true }
+        cached: { type: boolean, default: false }
+    ValidationError:
+      type: object
+      properties:
+        detail: { type: string }

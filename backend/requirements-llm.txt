@@ -1,0 +1,12 @@
+# Optional, heavier dependencies — enable real local LLM inference.
+# Install separately: pip install -r requirements-llm.txt
+#
+# llama.cpp Python bindings (GGUF runtime, builds llama.cpp).
+llama-cpp-python==0.3.2
+# Vector store for RAG (Sprint 1).
+faiss-cpu==1.8.0
+# Local embeddings (Sprint 1). Quantized models via the package's own logic.
+sentence-transformers==3.1.1
+# Background jobs (Sprint 1+).
+celery==5.4.0
+redis==5.0.8
