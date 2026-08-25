@@ -160,13 +160,60 @@ curl "http://localhost:8000/api/embeddings/search?q=IT%20firma&top_k=3" \
 
 > 🔒 Endpointy `/api/leads` a `/api/embeddings` vyžadujú JWT (`Authorization: Bearer <token>`).
 
+### Sprint 2 — Email, sekvencie, export
+
+**Stav Gmail/OAuth (sandbox ak nie sú poverenia)**
+```bash
+curl http://localhost:8000/api/email/status
+# {"configured": false, "mode": "sandbox"}
+```
+
+**Odoslanie emailu (sandbox vráti simulované message_id)**
+```bash
+curl -X POST http://localhost:8000/api/email/send \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"to":"klient@firma.sk","subject":" Ponuka","body":"Dobrý deň ..."}'
+```
+
+**Sekvencia: vytvorenie → zapísanie leadu → spustenie**
+```bash
+SID=$(curl -s -X POST http://localhost:8000/api/sequences \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"name":"Onboarding","steps":[{"delay_hours":24,"subject":"Ahoj {contact_name}","body":"Vitaj {company_name}"}]}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+curl -X POST http://localhost:8000/api/sequences/$SID/enroll \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"lead_ids":[1]}'
+
+curl -X POST http://localhost:8000/api/sequences/$SID/run -H "Authorization: Bearer $TOK"
+```
+
+**Export: CSV (backend), Google Sheets / Docs (OAuth, sandbox fallback)**
+```bash
+curl http://localhost:8000/api/export/leads.csv -H "Authorization: Bearer $TOK"
+curl -X POST http://localhost:8000/api/export/google-sheets \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"spreadsheet_id":"VASE_ID"}'
+curl -X POST http://localhost:8000/api/export/google-docs \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"title":"Report leadov"}'
+```
+
+> 💡 **XLSX export** prebieha priamo vo frontere cez **SheetJS** (tlačidlo
+> „Export XLSX“ na stránke Leads) — žiadny round-trip na server. Google
+> integrácie vyžadujú OAuth poverenia (env `GMAIL_CLIENT_ID/SECRET`,
+> `GOOGLE_CLIENT_ID/SECRET`); bez nich bežia v sandbox režime.
+
+> 🔒 Endpointy `/api/email`, `/api/sequences`, `/api/export` vyžadujú JWT.
+
 
 ---
 
 ## 🧪 Testovanie
 
 ```bash
-cd backend && pytest          # 7 testov (mock backend, žiadne sťahovanie)
+cd backend && pytest          # 32 testov (mock backend, žiadne sťahovanie)
 cd frontend && npm run build  # TypeScript + Vite build
 ```
 
@@ -178,7 +225,7 @@ cd frontend && npm run build  # TypeScript + Vite build
 |--------|--------|------|
 | **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ commit `eca9d3d` |
 | **1 — MVP core** | Auth (JWT), lead CRUD, CSV import, ORSR connector, LLM Orchestrator (7B), FAISS embeddings | ✅ implementované (tento commit) |
-| **2** | Gmail integrácia, sekvencie, dashboard, export XLSX/Sheets | 📋 plánované |
+| **2** | Gmail/OAuth integrácia, sekvencie, dashboard, export XLSX (SheetJS) / Google Sheets / Docs | ✅ implementované (tento commit) |
 | **3** | Workflow builder, A/B testy, deliverability, transkripcia | 📋 plánované |
 | **4** | HubSpot sync, reports, Tauri packaging, inštalátory | 📋 plánované |
 

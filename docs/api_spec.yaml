@@ -4,7 +4,10 @@ info:
   description: |
     Lokálny, open-source Apollo.io klon pre slovenský B2B trh.
     LLM inference prebieha výhradne lokálne (llama.cpp / GGUF).
-  version: 0.2.0
+
+    Externé integrácie (Gmail, Google Sheets/Docs) bežia v **sandbox** režime,
+    pokým nie sú nakonfigurované OAuth poverenia — endpointy sú vždy volateľné.
+  version: 0.3.0
   license:
     name: MIT
 servers:
@@ -18,7 +21,8 @@ tags:
   - name: leads
   - name: embeddings
   - name: email
-    description: "PLANNED (Sprint 2)"
+  - name: sequences
+  - name: export
   - name: workflows
     description: "PLANNED (Sprint 3)"
 
@@ -104,6 +108,50 @@ components:
         score: { type: number, nullable: true }
         enriched: { type: integer }
         notes: { type: string, nullable: true }
+    SendEmailRequest:
+      type: object
+      required: [to, subject, body]
+      properties:
+        to: { type: string }
+        subject: { type: string }
+        body: { type: string }
+        lead_id: { type: integer, nullable: true }
+    SequenceStep:
+      type: object
+      properties:
+        delay_hours: { type: integer, default: 24 }
+        subject: { type: string }
+        body: { type: string }
+    SequenceCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        steps: { type: array, items: { $ref: "#/components/schemas/SequenceStep" } }
+    SequenceOut:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        steps: { type: array, items: { $ref: "#/components/schemas/SequenceStep" } }
+    EnrollRequest:
+      type: object
+      required: [lead_ids]
+      properties:
+        lead_ids: { type: array, items: { type: integer } }
+    SheetsExportRequest:
+      type: object
+      required: [spreadsheet_id]
+      properties:
+        spreadsheet_id: { type: string }
+        rows: { type: array, items: { type: array, items: { type: string } } }
+        range: { type: string, default: "Sheet1" }
+    DocsExportRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        content: { type: string, nullable: true }
     EmbedUpsert:
       type: object
       required: [doc_id, text]
@@ -149,7 +197,7 @@ paths:
                 properties:
                   status: { type: string, example: ok }
                   llm_backend: { type: string, example: mock }
-                  version: { type: string, example: "0.2.0" }
+                  version: { type: string, example: "0.3.0" }
 
   /api/llm/prompt:
     post:
@@ -378,11 +426,192 @@ paths:
                   results: { type: array, items: { $ref: "#/components/schemas/EmbedSearchResult" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/email/status:
+    get:
+      tags: [email]
+      summary: Stav Gmail/OAuth integrácie
+      responses:
+        "200":
+          description: configured + mode (sandbox|live)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  mode: { type: string, example: sandbox }
+
+  /api/email/auth-url:
+    get:
+      tags: [email]
+      summary: URL na OAuth súhlas (Google)
+      responses:
+        "200":
+          description: Consent URL
+          content:
+            application/json:
+              schema: { type: object, properties: { url: { type: string } } }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /api/email/callback:
+    get:
+      tags: [email]
+      summary: OAuth callback (vymena kodu za tokeny)
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: OK, tokeny uložené }
+
   /api/email/send:
     post:
       tags: [email]
-      summary: "[PLANNED] Odoslanie emailu cez Gmail connector"
-      responses: { "200": { description: "Email odoslaný" } }
+      summary: Odoslanie emailu cez Gmail connector
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendEmailRequest" }
+      responses:
+        "200":
+          description: Odoslané (v sandboxu simulované)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id: { type: string }
+                  mode: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/sequences:
+    get:
+      tags: [sequences]
+      summary: Zoznam sekvencií
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Sekvencie
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/SequenceOut" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [sequences]
+      summary: Vytvorenie sekvencie (kroky)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SequenceCreate" }
+      responses:
+        "201":
+          description: Sekvencia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SequenceOut" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/sequences/{sid}:
+    get:
+      tags: [sequences]
+      summary: Detail sekvencie
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: sid, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200":
+          description: Sekvencia
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SequenceOut" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/sequences/{sid}/enroll:
+    post:
+      tags: [sequences]
+      summary: Zapísanie leadov do sekvencie
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: sid, in: path, required: true, schema: { type: integer } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnrollRequest" }
+      responses:
+        "200":
+          description: Počet zapísaných
+          content:
+            application/json:
+              schema: { type: object, properties: { enrolled: { type: integer } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/sequences/{sid}/run:
+    post:
+      tags: [sequences]
+      summary: Spustenie splatných krokov (odoslanie emailov)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ name: sid, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200":
+          description: Spracované / odoslané
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed: { type: integer }
+                  sent: { type: integer }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/export/leads.csv:
+    get:
+      tags: [export]
+      summary: Export leadov do CSV
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: CSV súbor
+          content:
+            text/csv: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/export/google-sheets:
+    post:
+      tags: [export]
+      summary: Export do Google Sheets (OAuth, sandbox fallback)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SheetsExportRequest" }
+      responses:
+        "200":
+          description: Výsledok (v sandboxu simulované)
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string }, appended: { type: integer }, mode: { type: string } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/export/google-docs:
+    post:
+      tags: [export]
+      summary: Export do Google Docs (OAuth, sandbox fallback)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocsExportRequest" }
+      responses:
+        "200":
+          description: Výsledok (v sandboxe simulované)
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { type: string }, documentId: { type: string }, mode: { type: string } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/workflows/execute:
     post:

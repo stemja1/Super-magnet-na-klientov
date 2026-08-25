@@ -51,11 +51,14 @@ flowchart LR
 |------|--------|
 | **MVP (P1)** | Auth, Lead management, Prospecting/Enrichment (ORSR), LLM Orchestrator, Email (Gmail), Export (XLSX/Sheets), Frontend, SQLite, Embeddings+FAISS |
 
-> **Stav (2026-08-25):** Sprint 0 aj Sprint 1 (MVP core) sú implementované a
-> pokryté testami. Hotové moduly: **Auth (JWT, role)**, **Lead management**
-> (CRUD + CSV import + ORSR enrichment + LLM scoring), **ORSR connector**,
-> **LLM Orchestrator** (mock fallback + RAG hook), **Embeddings + FAISS**
-> (s numpy fallbackom). E-mail (Gmail) a Export (XLSX/Sheets) sú naplánované
+> **Stav (2026-08-25):** Sprint 0, Sprint 1 aj Sprint 2 sú implementované a
+> pokryté testami (32 testov). Hotové moduly: **Auth (JWT, role)**, **Lead
+> management** (CRUD + CSV import + ORSR enrichment + LLM scoring), **ORSR
+> connector**, **LLM Orchestrator** (mock fallback + RAG hook), **Embeddings +
+> FAISS** (numpy fallback), **Gmail/OAuth integrácia** (sandbox fallback),
+> **E-mail sekvencie** (enroll/run), **Export** (CSV backend, XLSX cez SheetJS
+> front-end, Google Sheets/Docs cez OAuth s sandbox fallbackom), a **Dashboard**
+> + **Sequences** stránky vo frontere. E-mail (Gmail) a Export (XLSX/Sheets) sú naplánované
 > v Sprinte 2.
 | **Phase 2 (P2)** | Workflow builder, A/B testy, Deliverability checker, Transkripcia (whisper.cpp) |
 | **Phase 3 (P3)** | HubSpot/Pipedrive sync, Advanced dashboards, SSO, parallel dialer |

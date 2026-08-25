@@ -40,3 +40,7 @@ frontend/src-tauri/target/
 .npm/
 .cache/
 .pytest_cache/
+
+# OAuth token stores (local only)
+.gmail_tokens.json
+.google_tokens.json

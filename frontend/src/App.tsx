@@ -1,11 +1,15 @@
 import { useState } from "react";
 import PromptPage from "./pages/PromptPage";
 import LeadsPage from "./pages/LeadsPage";
+import DashboardPage from "./pages/DashboardPage";
+import SequencesPage from "./pages/SequencesPage";
 import AuthForm from "./components/AuthForm";
+
+type View = "prompt" | "dashboard" | "leads" | "sequences";
 
 export default function App() {
   const [token, setToken] = useState<string>(localStorage.getItem("smk_token") || "");
-  const [view, setView] = useState<"prompt" | "leads">("prompt");
+  const [view, setView] = useState<View>("dashboard");
 
   function handleAuth(t: string) {
     localStorage.setItem("smk_token", t);
@@ -33,25 +37,27 @@ export default function App() {
         <div className="flex items-center gap-5">
           <span className="font-semibold">Super magnet na klientov</span>
           <nav className="flex gap-3 text-sm">
-            <button
-              onClick={() => setView("prompt")}
-              className={view === "prompt" ? "text-emerald-400" : "text-slate-300"}
-            >
-              Prompt
-            </button>
-            <button
-              onClick={() => setView("leads")}
-              className={view === "leads" ? "text-emerald-400" : "text-slate-300"}
-            >
-              Leads
-            </button>
+            {(["dashboard", "leads", "sequences", "prompt"] as View[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={view === v ? "text-emerald-400 capitalize" : "text-slate-300 capitalize"}
+              >
+                {v === "prompt" ? "LLM Prompt" : v}
+              </button>
+            ))}
           </nav>
         </div>
         <button onClick={logout} className="text-sm text-slate-300 hover:text-white">
           Odhlásiť
         </button>
       </header>
-      <main>{view === "prompt" ? <PromptPage /> : <LeadsPage token={token} />}</main>
+      <main>
+        {view === "dashboard" && <DashboardPage token={token} />}
+        {view === "leads" && <LeadsPage token={token} />}
+        {view === "sequences" && <SequencesPage token={token} />}
+        {view === "prompt" && <PromptPage />}
+      </main>
     </div>
   );
 }

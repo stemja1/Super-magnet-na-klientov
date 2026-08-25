@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   createLead,
   deleteLead,
@@ -72,6 +73,21 @@ export default function LeadsPage({ token }: { token: string }) {
     e.target.value = "";
   }
 
+  function exportXlsx() {
+    const rows = leads.map((l) => ({
+      id: l.id,
+      company: l.company_name,
+      ico: l.ico ?? "",
+      email: l.email ?? "",
+      sector: l.sector ?? "",
+      score: l.score ?? "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Leads");
+    XLSX.writeFile(wb, "leads.xlsx");
+  }
+
   return (
     <main className="max-w-4xl mx-auto p-6 space-y-6">
       <form onSubmit={submit} className="bg-white p-5 rounded-xl shadow space-y-3">
@@ -114,6 +130,13 @@ export default function LeadsPage({ token }: { token: string }) {
             Import CSV:{" "}
             <input type="file" accept=".csv" onChange={onImport} className="text-sm" />
           </label>
+          <button
+            type="button"
+            onClick={exportXlsx}
+            className="text-blue-600 hover:underline text-sm"
+          >
+            Export XLSX
+          </button>
         </div>
         {error && <div className="text-red-600 text-sm">{error}</div>}
       </form>

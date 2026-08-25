@@ -158,3 +158,98 @@ export async function importCsv(file: File, token: string): Promise<any> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
+
+// ---- Email ----
+export interface EmailStatus {
+  configured: boolean;
+  mode: string;
+}
+export async function getEmailStatus(): Promise<EmailStatus> {
+  const res = await fetch(`${API_BASE}/api/email/status`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function sendEmail(
+  data: { to: string; subject: string; body: string },
+  token: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/email/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Sequences ----
+export interface SequenceStep {
+  delay_hours: number;
+  subject: string;
+  body: string;
+}
+export interface Sequence {
+  id: number;
+  name: string;
+  steps: SequenceStep[];
+}
+export async function listSequences(token: string): Promise<Sequence[]> {
+  const res = await fetch(`${API_BASE}/api/sequences`, { headers: authHeader(token) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function createSequence(
+  name: string,
+  steps: SequenceStep[],
+  token: string
+): Promise<Sequence> {
+  const res = await fetch(`${API_BASE}/api/sequences`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ name, steps }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function enrollSequence(id: number, leadIds: number[], token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/sequences/${id}/enroll`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ lead_ids: leadIds }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function runSequence(id: number, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/sequences/${id}/run`, {
+    method: "POST",
+    headers: authHeader(token),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Export ----
+export async function exportLeadsCsv(token: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/export/leads.csv`, { headers: authHeader(token) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
+}
+export async function exportSheets(spreadsheetId: string, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/export/google-sheets`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ spreadsheet_id: spreadsheetId }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function exportDocs(title: string, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/export/google-docs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
