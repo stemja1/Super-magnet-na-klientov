@@ -10,6 +10,9 @@ venv/
 .env
 app.db
 *.sqlite3
+*.db
+*.pkl
+embeddings_store.pkl
 
 # ---- Models (large binaries, do not commit) ----
 models/gguf/

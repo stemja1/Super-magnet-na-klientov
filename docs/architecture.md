@@ -50,6 +50,13 @@ flowchart LR
 | Fáza | Moduly |
 |------|--------|
 | **MVP (P1)** | Auth, Lead management, Prospecting/Enrichment (ORSR), LLM Orchestrator, Email (Gmail), Export (XLSX/Sheets), Frontend, SQLite, Embeddings+FAISS |
+
+> **Stav (2026-08-25):** Sprint 0 aj Sprint 1 (MVP core) sú implementované a
+> pokryté testami. Hotové moduly: **Auth (JWT, role)**, **Lead management**
+> (CRUD + CSV import + ORSR enrichment + LLM scoring), **ORSR connector**,
+> **LLM Orchestrator** (mock fallback + RAG hook), **Embeddings + FAISS**
+> (s numpy fallbackom). E-mail (Gmail) a Export (XLSX/Sheets) sú naplánované
+> v Sprinte 2.
 | **Phase 2 (P2)** | Workflow builder, A/B testy, Deliverability checker, Transkripcia (whisper.cpp) |
 | **Phase 3 (P3)** | HubSpot/Pipedrive sync, Advanced dashboards, SSO, parallel dialer |
 

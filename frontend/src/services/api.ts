@@ -29,6 +29,37 @@ export interface HealthResponse {
   version: string;
 }
 
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  role?: string;
+}
+
+export interface Lead {
+  id: number;
+  company_name: string;
+  ico?: string | null;
+  contact_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  sector?: string | null;
+  company_size?: string | null;
+  source: string;
+  score?: number | null;
+  enriched: number;
+  notes?: string | null;
+}
+
+function authHeader(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+function fail(res: Response, body: any): Error {
+  const detail = body && (body.detail ?? body.error);
+  return new Error(typeof detail === "string" ? detail : `HTTP ${res.status}`);
+}
+
+// ---- LLM ----
 export async function sendPrompt(req: LLMRequest): Promise<LLMResponse> {
   const res = await fetch(`${API_BASE}/api/llm/prompt`, {
     method: "POST",
@@ -37,13 +68,93 @@ export async function sendPrompt(req: LLMRequest): Promise<LLMResponse> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).detail ?? `HTTP ${res.status}`);
+    throw fail(res, err);
   }
   return res.json();
 }
 
 export async function getHealth(): Promise<HealthResponse> {
   const res = await fetch(`${API_BASE}/health`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Auth ----
+export async function register(
+  username: string,
+  password: string,
+  role = "user"
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password, role }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw fail(res, err);
+  }
+  return res.json();
+}
+
+export async function login(username: string, password: string): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw fail(res, err);
+  }
+  return res.json();
+}
+
+// ---- Leads ----
+export async function listLeads(token: string): Promise<Lead[]> {
+  const res = await fetch(`${API_BASE}/api/leads`, { headers: authHeader(token) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function createLead(data: Partial<Lead>, token: string): Promise<Lead> {
+  const res = await fetch(`${API_BASE}/api/leads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw fail(res, err);
+  }
+  return res.json();
+}
+
+export async function scoreLead(id: number, token: string): Promise<{ lead_id: number; score: number }> {
+  const res = await fetch(`${API_BASE}/api/leads/${id}/score`, {
+    method: "POST",
+    headers: authHeader(token),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function deleteLead(id: number, token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/leads/${id}`, {
+    method: "DELETE",
+    headers: authHeader(token),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+export async function importCsv(file: File, token: string): Promise<any> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/api/leads/import`, {
+    method: "POST",
+    headers: authHeader(token),
+    body: form,
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

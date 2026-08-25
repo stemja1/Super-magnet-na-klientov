@@ -116,6 +116,51 @@ curl -X POST http://localhost:8000/api/llm/prompt \
 curl http://localhost:8000/api/llm/status
 ```
 
+### Sprint 1 — Auth, Leads, Embeddings
+
+**Registrácia + login (JWT)**
+```bash
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"password123","role":"admin"}'
+
+TOK=$(curl -s -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"password123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+```
+
+**Vytvorenie leadu (ORSR enrichment, ak je IČO)**
+```bash
+curl -X POST http://localhost:8000/api/leads \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"company_name":"Acme s.r.o.","ico":"12345678","email":"a@acme.sk","sector":"IT"}'
+```
+
+**LLM lead scoring (0–100)**
+```bash
+curl -X POST http://localhost:8000/api/leads/1/score -H "Authorization: Bearer $TOK"
+```
+
+**CSV import**
+```bash
+curl -X POST http://localhost:8000/api/leads/import \
+  -H "Authorization: Bearer $TOK" \
+  -F "file=@leads.csv;type=text/csv"
+```
+
+**Embeddings: upsert + search**
+```bash
+curl -X POST http://localhost:8000/api/embeddings/upsert \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"doc_id":"n1","text":"Lead scoring pre IT firmu na Slovensku"}'
+
+curl "http://localhost:8000/api/embeddings/search?q=IT%20firma&top_k=3" \
+  -H "Authorization: Bearer $TOK"
+```
+
+> 🔒 Endpointy `/api/leads` a `/api/embeddings` vyžadujú JWT (`Authorization: Bearer <token>`).
+
+
 ---
 
 ## 🧪 Testovanie
@@ -131,8 +176,8 @@ cd frontend && npm run build  # TypeScript + Vite build
 
 | Sprint | Výstup | Stav |
 |--------|--------|------|
-| **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ tento commit |
-| **1 — MVP core** | Auth, lead CRUD, CSV import, ORSR connector, LLM Orchestrator (7B), FAISS embeddings | 📋 plánované |
+| **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ commit `eca9d3d` |
+| **1 — MVP core** | Auth (JWT), lead CRUD, CSV import, ORSR connector, LLM Orchestrator (7B), FAISS embeddings | ✅ implementované (tento commit) |
 | **2** | Gmail integrácia, sekvencie, dashboard, export XLSX/Sheets | 📋 plánované |
 | **3** | Workflow builder, A/B testy, deliverability, transkripcia | 📋 plánované |
 | **4** | HubSpot sync, reports, Tauri packaging, inštalátory | 📋 plánované |

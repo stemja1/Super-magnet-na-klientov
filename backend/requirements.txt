@@ -1,8 +1,12 @@
-# Core dependencies — enough to run the API + mock LLM backend.
+# Core dependencies — enough to run the API (auth, leads, embeddings, mock LLM).
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.9.2
 python-dotenv==1.0.1
+sqlalchemy==2.0.35
+pyjwt==2.9.0
+python-multipart==0.0.12
+numpy==1.26.4
 
 # Tests
 pytest==8.3.3
