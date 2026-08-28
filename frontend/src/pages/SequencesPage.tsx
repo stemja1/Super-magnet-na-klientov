@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  abReportSequence,
   createSequence,
   enrollSequence,
   listSequences,
@@ -14,6 +15,9 @@ export default function SequencesPage({ token }: { token: string }) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [delay, setDelay] = useState(24);
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [varA, setVarA] = useState({ subject: "", body: "" });
+  const [varB, setVarB] = useState({ subject: "", body: "" });
   const [enrollId, setEnrollId] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -33,11 +37,28 @@ export default function SequencesPage({ token }: { token: string }) {
     e.preventDefault();
     setMsg(null);
     const steps: SequenceStep[] = [{ delay_hours: delay, subject, body }];
+    const payload: any = { name, steps };
+    if (abEnabled) {
+      payload.ab_enabled = true;
+      payload.variants = {
+        A: [{ delay_hours: delay, subject: varA.subject, body: varA.body }],
+        B: [{ delay_hours: delay, subject: varB.subject, body: varB.body }],
+      };
+    }
     try {
-      await createSequence(name, steps, token);
+      await createSequence(
+        payload.name,
+        payload.steps,
+        token,
+        payload.ab_enabled,
+        payload.variants
+      );
       setName("");
       setSubject("");
       setBody("");
+      setVarA({ subject: "", body: "" });
+      setVarB({ subject: "", body: "" });
+      setAbEnabled(false);
       await load();
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Chyba");
@@ -66,6 +87,15 @@ export default function SequencesPage({ token }: { token: string }) {
     }
   }
 
+  async function abReport(sid: number) {
+    try {
+      const r = await abReportSequence(sid, token);
+      setMsg(JSON.stringify(r));
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Chyba");
+    }
+  }
+
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-6">
       <form onSubmit={create} className="bg-white p-5 rounded-xl shadow space-y-3">
@@ -77,19 +107,23 @@ export default function SequencesPage({ token }: { token: string }) {
           required
           className="w-full border rounded p-2 text-sm"
         />
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Predmet (použi {contact_name})"
-          className="w-full border rounded p-2 text-sm"
-        />
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Telo emailu ({company_name})"
-          rows={3}
-          className="w-full border rounded p-2 text-sm"
-        />
+        {!abEnabled && (
+          <>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Predmet (použi {contact_name})"
+              className="w-full border rounded p-2 text-sm"
+            />
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Telo emailu ({company_name})"
+              rows={3}
+              className="w-full border rounded p-2 text-sm"
+            />
+          </>
+        )}
         <input
           type="number"
           value={delay}
@@ -97,6 +131,49 @@ export default function SequencesPage({ token }: { token: string }) {
           placeholder="Oneskorenie (hod)"
           className="w-48 border rounded p-2 text-sm"
         />
+
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={abEnabled} onChange={(e) => setAbEnabled(e.target.checked)} />
+          A/B test (2 varianty A/B)
+        </label>
+
+        {abEnabled && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <div className="text-xs font-medium">Varianta A</div>
+              <input
+                value={varA.subject}
+                onChange={(e) => setVarA({ ...varA, subject: e.target.value })}
+                placeholder="Predmet A"
+                className="w-full border rounded p-1 text-sm"
+              />
+              <textarea
+                value={varA.body}
+                onChange={(e) => setVarA({ ...varA, body: e.target.value })}
+                placeholder="Telo A"
+                rows={2}
+                className="w-full border rounded p-1 text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium">Varianta B</div>
+              <input
+                value={varB.subject}
+                onChange={(e) => setVarB({ ...varB, subject: e.target.value })}
+                placeholder="Predmet B"
+                className="w-full border rounded p-1 text-sm"
+              />
+              <textarea
+                value={varB.body}
+                onChange={(e) => setVarB({ ...varB, body: e.target.value })}
+                placeholder="Telo B"
+                rows={2}
+                className="w-full border rounded p-1 text-sm"
+              />
+            </div>
+          </div>
+        )}
+
         <button className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
           Vytvoriť
         </button>
@@ -107,12 +184,10 @@ export default function SequencesPage({ token }: { token: string }) {
       <section className="bg-white rounded-xl shadow p-4 space-y-2">
         <h3 className="font-medium">Sekvencie</h3>
         {seqs.map((s) => (
-          <div
-            key={s.id}
-            className="border-t pt-2 text-sm flex items-center justify-between gap-2"
-          >
+          <div key={s.id} className="border-t pt-2 text-sm flex items-center justify-between gap-2 flex-wrap">
             <div>
               <b>{s.name}</b> · {s.steps.length} krokov
+              {s.ab_enabled ? " · A/B" : ""}
             </div>
             <div className="flex gap-2 items-center">
               <input
@@ -127,6 +202,11 @@ export default function SequencesPage({ token }: { token: string }) {
               <button onClick={() => run(s.id)} className="text-emerald-600 hover:underline text-xs">
                 Spustiť
               </button>
+              {s.ab_enabled && (
+                <button onClick={() => abReport(s.id)} className="text-slate-600 hover:underline text-xs">
+                  A/B report
+                </button>
+              )}
             </div>
           </div>
         ))}

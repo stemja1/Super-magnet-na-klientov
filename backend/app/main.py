@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, email, embeddings, export, leads, llm, sequences
+from app.api import auth, email, embeddings, export, leads, llm, sequences, transcription, workflows
 from app.config import settings
 from app.db.session import init_db
 
@@ -28,7 +28,7 @@ app = FastAPI(
         "Lokálny, open-source Apollo.io klon optimalizovaný pre slovenský B2B trh "
         "(ORSR, FinStat, Živnostenský register). Všetka LLM inference prebieha lokálne."
     ),
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -47,6 +47,8 @@ app.include_router(embeddings.router)
 app.include_router(email.router)
 app.include_router(sequences.router)
 app.include_router(export.router)
+app.include_router(workflows.router)
+app.include_router(transcription.router)
 
 
 @app.get("/health", tags=["system"])
@@ -54,7 +56,7 @@ def health():
     return {
         "status": "ok",
         "llm_backend": llm.orchestrator.backend,
-        "version": "0.3.0",
+        "version": "0.4.0",
     }
 
 

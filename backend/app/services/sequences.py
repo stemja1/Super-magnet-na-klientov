@@ -1,8 +1,9 @@
-"""Sequence business logic: create, enroll, and run due steps (email send)."""
+"""Sequence business logic: create, enroll, A/B variants, run due steps."""
 from __future__ import annotations
 
+import random
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -11,8 +12,19 @@ from app.models.sequence import Sequence, SequenceEnrollment
 from app.services.email.gmail import GmailConnector
 
 
-def create_sequence(db: Session, name: str, steps: List[dict]) -> Sequence:
-    seq = Sequence(name=name, steps=steps or [])
+def create_sequence(
+    db: Session,
+    name: str,
+    steps: Optional[List[dict]] = None,
+    ab_enabled: bool = False,
+    variants: Optional[Dict[str, List[dict]]] = None,
+) -> Sequence:
+    seq = Sequence(
+        name=name,
+        steps=steps or [],
+        ab_enabled=ab_enabled,
+        variants=variants,
+    )
     db.add(seq)
     db.commit()
     db.refresh(seq)
@@ -28,22 +40,35 @@ def get_sequence(db: Session, sid: int) -> Optional[Sequence]:
 
 
 def enroll(db: Session, sid: int, lead_ids: List[int]) -> dict:
+    seq = db.get(Sequence, sid)
+    if not seq:
+        return {"enrolled": 0}
     count = 0
     for lid in lead_ids:
         if db.get(Lead, lid) is None:
             continue
+        variant = (
+            random.choice(["A", "B"]) if seq.ab_enabled else "A"
+        )
         db.add(
             SequenceEnrollment(
                 sequence_id=sid,
                 lead_id=lid,
                 step_index=0,
                 status="active",
+                variant=variant,
                 next_run_at=datetime.now(timezone.utc),
             )
         )
         count += 1
     db.commit()
-    return {"enrolled": count}
+    return {"enrolled": count, "ab_enabled": seq.ab_enabled}
+
+
+def _variant_steps(seq: Sequence, variant: str) -> List[dict]:
+    if seq.ab_enabled and seq.variants:
+        return seq.variants.get(variant, seq.steps) or []
+    return seq.steps or []
 
 
 def _render(template: str, lead: Lead) -> str:
@@ -75,7 +100,7 @@ def run_due(
     for enr in due:
         seq = db.get(Sequence, enr.sequence_id)
         lead = db.get(Lead, enr.lead_id)
-        steps = (seq.steps if seq else []) or []
+        steps = _variant_steps(seq, enr.variant) if seq else []
         if not lead or enr.step_index >= len(steps):
             enr.status = "done"
             continue
@@ -93,3 +118,16 @@ def run_due(
             enr.next_run_at = now + timedelta(hours=delay)
     db.commit()
     return {"processed": len(due), "sent": sent}
+
+
+def ab_report(db: Session, sid: int) -> dict:
+    enrollments = (
+        db.query(SequenceEnrollment)
+        .filter(SequenceEnrollment.sequence_id == sid)
+        .all()
+    )
+    counts = {"A": 0, "B": 0, "total": len(enrollments)}
+    for e in enrollments:
+        if e.variant in counts:
+            counts[e.variant] += 1
+    return counts

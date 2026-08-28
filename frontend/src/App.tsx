@@ -3,9 +3,29 @@ import PromptPage from "./pages/PromptPage";
 import LeadsPage from "./pages/LeadsPage";
 import DashboardPage from "./pages/DashboardPage";
 import SequencesPage from "./pages/SequencesPage";
+import WorkflowsPage from "./pages/WorkflowsPage";
+import DeliverabilityPage from "./pages/DeliverabilityPage";
+import TranscriptionPage from "./pages/TranscriptionPage";
 import AuthForm from "./components/AuthForm";
 
-type View = "prompt" | "dashboard" | "leads" | "sequences";
+type View =
+  | "dashboard"
+  | "leads"
+  | "sequences"
+  | "workflows"
+  | "deliverability"
+  | "transcription"
+  | "prompt";
+
+const NAV: View[] = [
+  "dashboard",
+  "leads",
+  "sequences",
+  "workflows",
+  "deliverability",
+  "transcription",
+  "prompt",
+];
 
 export default function App() {
   const [token, setToken] = useState<string>(localStorage.getItem("smk_token") || "");
@@ -34,10 +54,10 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="bg-slate-900 text-white px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4 flex-wrap">
           <span className="font-semibold">Super magnet na klientov</span>
           <nav className="flex gap-3 text-sm">
-            {(["dashboard", "leads", "sequences", "prompt"] as View[]).map((v) => (
+            {NAV.map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -56,6 +76,9 @@ export default function App() {
         {view === "dashboard" && <DashboardPage token={token} />}
         {view === "leads" && <LeadsPage token={token} />}
         {view === "sequences" && <SequencesPage token={token} />}
+        {view === "workflows" && <WorkflowsPage token={token} />}
+        {view === "deliverability" && <DeliverabilityPage token={token} />}
+        {view === "transcription" && <TranscriptionPage token={token} />}
         {view === "prompt" && <PromptPage />}
       </main>
     </div>

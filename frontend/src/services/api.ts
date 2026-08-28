@@ -192,6 +192,7 @@ export interface Sequence {
   id: number;
   name: string;
   steps: SequenceStep[];
+  ab_enabled?: boolean;
 }
 export async function listSequences(token: string): Promise<Sequence[]> {
   const res = await fetch(`${API_BASE}/api/sequences`, { headers: authHeader(token) });
@@ -201,12 +202,19 @@ export async function listSequences(token: string): Promise<Sequence[]> {
 export async function createSequence(
   name: string,
   steps: SequenceStep[],
-  token: string
+  token: string,
+  abEnabled?: boolean,
+  variants?: any
 ): Promise<Sequence> {
+  const body: any = { name, steps };
+  if (abEnabled) {
+    body.ab_enabled = true;
+    body.variants = variants;
+  }
   const res = await fetch(`${API_BASE}/api/sequences`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader(token) },
-    body: JSON.stringify({ name, steps }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
@@ -223,6 +231,13 @@ export async function enrollSequence(id: number, leadIds: number[], token: strin
 export async function runSequence(id: number, token: string): Promise<any> {
   const res = await fetch(`${API_BASE}/api/sequences/${id}/run`, {
     method: "POST",
+    headers: authHeader(token),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function abReportSequence(id: number, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/sequences/${id}/ab-report`, {
     headers: authHeader(token),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -249,6 +264,77 @@ export async function exportDocs(title: string, token: string): Promise<any> {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader(token) },
     body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Workflows ----
+export interface Workflow {
+  id: number;
+  name: string;
+  definition: { steps: any[] };
+}
+export async function listWorkflows(token: string): Promise<Workflow[]> {
+  const res = await fetch(`${API_BASE}/api/workflows`, { headers: authHeader(token) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function createWorkflow(
+  name: string,
+  definition: { steps: any[] },
+  token: string
+): Promise<Workflow> {
+  const res = await fetch(`${API_BASE}/api/workflows`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ name, definition }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function executeWorkflow(
+  workflowId: number,
+  leadId: number,
+  token: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/workflows/execute`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ workflow_id: workflowId, lead_id: leadId }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Email deliverability ----
+export async function checkDeliverability(domain: string, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/email/deliverability`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ domain }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ---- Transcription ----
+export async function transcriptionInsights(transcript: string, token: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/transcription/insights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader(token) },
+    body: JSON.stringify({ transcript }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+export async function transcribeFile(file: File, token: string): Promise<any> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/api/transcription/transcribe`, {
+    method: "POST",
+    headers: authHeader(token),
+    body: form,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();

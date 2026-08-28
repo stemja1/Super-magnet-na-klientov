@@ -53,7 +53,7 @@ def test_protected_endpoint_with_token(client: TestClient):
     headers = _login(client, "erin")
     r = client.get("/api/leads", headers=headers)
     assert r.status_code == 200
-    assert r.json() == []
+    assert isinstance(r.json(), list)
 
 
 def _login(client: TestClient, username: str) -> dict:

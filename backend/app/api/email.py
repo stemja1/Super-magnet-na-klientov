@@ -12,16 +12,19 @@ from app.api.auth import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.services.email.gmail import GmailConnector, get_client
+from app.services.email.deliverability import DeliverabilityChecker
 
 router = APIRouter(prefix="/api/email", tags=["email"])
 
 
-class SendEmailRequest(BaseModel):
+class DeliverabilityRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
-    to: str
-    subject: str
-    body: str
-    lead_id: Optional[int] = None
+    domain: str
+
+
+@router.post("/deliverability")
+def deliverability(req: DeliverabilityRequest, _: User = Depends(get_current_user)):
+    return DeliverabilityChecker().check(req.domain)
 
 
 @router.get("/status")
@@ -49,6 +52,14 @@ def callback(code: str = Query(...), state: str = Query(...)):
         raise HTTPException(http_status.HTTP_400_BAD_REQUEST, "Gmail OAuth nie je nakonfigurované")
     client.exchange_code(code)
     return {"ok": True, "state": state}
+
+
+class SendEmailRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    to: str
+    subject: str
+    body: str
+    lead_id: Optional[int] = None
 
 
 @router.post("/send")

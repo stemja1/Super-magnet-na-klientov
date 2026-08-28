@@ -207,13 +207,51 @@ curl -X POST http://localhost:8000/api/export/google-docs \
 
 > 🔒 Endpointy `/api/email`, `/api/sequences`, `/api/export` vyžadujú JWT.
 
+### Sprint 3 — Workflows, A/B testy, deliverability, transkripcia
+
+**Workflow: vytvorenie a spustenie pre lead**
+```bash
+WF=$(curl -s -X POST http://localhost:8000/api/workflows \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"name":"Qualify","definition":{"steps":[{"type":"score"},{"type":"send_email","subject":"Ahoj {contact_name}","body":"Vitaj {company_name}"}]}}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+curl -X POST http://localhost:8000/api/workflows/execute \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d "{\"workflow_id\":$WF,\"lead_id\":1}"
+```
+
+**A/B sekvencia + report**
+```bash
+SID=$(curl -s -X POST http://localhost:8000/api/sequences \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"name":"AB","ab_enabled":true,"variants":{"A":[{"delay_hours":1,"subject":"A","body":"Variant A"}],"B":[{"delay_hours":1,"subject":"B","body":"Variant B"}]}}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+curl -X POST http://localhost:8000/api/sequences/$SID/enroll -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" -d '{"lead_ids":[1]}'
+curl http://localhost:8000/api/sequences/$SID/ab-report -H "Authorization: Bearer $TOK"
+```
+
+**Deliverability checker (SPF/DKIM/DMARC)**
+```bash
+curl -X POST http://localhost:8000/api/email/deliverability \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"domain":"firma.sk"}'
+```
+
+**Transkripcia + call insights**
+```bash
+curl -X POST http://localhost:8000/api/transcription/insights \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"transcript":"Zákazník má záujem o produkt a čaká na cenovú ponuku."}'
+```
+
 
 ---
 
 ## 🧪 Testovanie
 
 ```bash
-cd backend && pytest          # 32 testov (mock backend, žiadne sťahovanie)
+cd backend && pytest          # 42 testov (mock backend, žiadne sťahovanie)
 cd frontend && npm run build  # TypeScript + Vite build
 ```
 
@@ -226,6 +264,7 @@ cd frontend && npm run build  # TypeScript + Vite build
 | **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ commit `eca9d3d` |
 | **1 — MVP core** | Auth (JWT), lead CRUD, CSV import, ORSR connector, LLM Orchestrator (7B), FAISS embeddings | ✅ implementované (tento commit) |
 | **2** | Gmail/OAuth integrácia, sekvencie, dashboard, export XLSX (SheetJS) / Google Sheets / Docs | ✅ implementované (tento commit) |
+| **3** | Workflow builder, A/B testy sekvencií, deliverability checker, transkripcia (whisper.cpp) + call insights | ✅ implementované (tento commit) |
 | **3** | Workflow builder, A/B testy, deliverability, transkripcia | 📋 plánované |
 | **4** | HubSpot sync, reports, Tauri packaging, inštalátory | 📋 plánované |
 

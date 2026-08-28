@@ -32,6 +32,8 @@ class SequenceCreate(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     name: str = Field(min_length=1, max_length=200)
     steps: List[Step] = []
+    ab_enabled: bool = False
+    variants: Optional[Dict[str, List[Step]]] = None
 
 
 class EnrollRequest(BaseModel):
@@ -42,7 +44,14 @@ class EnrollRequest(BaseModel):
 @router.post("", status_code=201)
 def create_sequence(data: SequenceCreate, db: Session = Depends(get_db)):
     steps = [s.model_dump() for s in data.steps]
-    return seq_svc.create_sequence(db, data.name, steps)
+    variants = (
+        {k: [s.model_dump() for s in v] for k, v in (data.variants or {}).items()}
+        if data.variants
+        else None
+    )
+    return seq_svc.create_sequence(
+        db, data.name, steps, ab_enabled=data.ab_enabled, variants=variants
+    )
 
 
 @router.get("")
@@ -63,6 +72,13 @@ def enroll(sid: int, data: EnrollRequest, db: Session = Depends(get_db)):
     if not seq_svc.get_sequence(db, sid):
         raise HTTPException(404, "Sekvencia nenájdená")
     return seq_svc.enroll(db, sid, data.lead_ids)
+
+
+@router.get("/{sid}/ab-report")
+def ab_report(sid: int, db: Session = Depends(get_db)):
+    if not seq_svc.get_sequence(db, sid):
+        raise HTTPException(404, "Sekvencia nenájdená")
+    return seq_svc.ab_report(db, sid)
 
 
 @router.post("/{sid}/run")
