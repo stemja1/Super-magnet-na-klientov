@@ -91,8 +91,14 @@ def delete_lead(db: Session, lead_id: int) -> bool:
 
 
 # ---- CSV import -----------------------------------------------------------
-def import_csv(db: Session, content: bytes) -> dict:
-    text = content.decode("utf-8", "ignore")
+def import_csv(db: Session, content: bytes, enrich: bool = True) -> dict:
+    """Import leads from CSV bytes.
+
+    ``enrich`` triggers a synchronous ORSR lookup per row, which is one HTTP
+    request each — pass ``enrich=False`` for large files and enrich later
+    (or via the background worker planned for the next phase).
+    """
+    text = content.decode("utf-8-sig", "ignore")
     reader = csv.DictReader(io.StringIO(text))
     created = 0
     errors: list[dict] = []
@@ -109,11 +115,11 @@ def import_csv(db: Session, content: bytes) -> dict:
                 source="csv_import",
                 notes=row.get("notes") or row.get("poznamka"),
             )
-            create_lead(db, data, enrich=True)
+            create_lead(db, data, enrich=enrich)
             created += 1
         except Exception as exc:
             errors.append({"row": i, "error": str(exc)})
-    return {"created": created, "errors": errors}
+    return {"created": created, "errors": errors, "enriched": bool(enrich)}
 
 
 # ---- LLM lead scoring (spec §8) ------------------------------------------
@@ -128,28 +134,60 @@ def _contact_profile(lead: Lead) -> str:
     return f"Meno: {lead.contact_name or '?'}; Email: {lead.email or '?'}"
 
 
+def _heuristic_score(lead: Lead) -> float:
+    """Deterministic fallback used when no local model is loaded."""
+    base = 50.0
+    if lead.ico:
+        base += 10
+    if lead.email:
+        base += 10
+    if lead.sector:
+        base += 5
+    if lead.company_size and any(c.isdigit() for c in str(lead.company_size)):
+        base += 5
+    return float(min(100, base))
+
+
+# Score extraction, most explicit form first. A bare "\b\d{1,3}\b" fallback would
+# happily return the first unrelated number in a prose answer ("3 dôvody..." -> 3).
+_SCORE_PATTERNS = (
+    re.compile(r"sk[óo]re\s*[:=]\s*(\d{1,3})", re.IGNORECASE),
+    re.compile(r"(\d{1,3})\s*/\s*100"),
+    re.compile(r"(\d{1,3})\s*%", re.IGNORECASE),
+    re.compile(r"^\s*(\d{1,3})\s*$", re.MULTILINE),
+)
+
+
+def parse_score(text: str) -> Optional[float]:
+    """Extract a 0-100 lead score from free-form model output.
+
+    Returns ``None`` when no score is present, so callers can fall back instead of
+    silently scoring a lead 0.
+    """
+    if not text:
+        return None
+    for pattern in _SCORE_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return float(min(100, max(0, int(m.group(1)))))
+    return None
+
+
 def score_lead(lead: Lead) -> float:
     """Score a lead 0-100 via the local LLM; deterministic heuristic in mock mode."""
+    if orchestrator.backend == "mock":
+        return _heuristic_score(lead)
+
     prompt = LEAD_SCORING_TEMPLATE.format(
         company_profile=_company_profile(lead),
         contact_profile=_contact_profile(lead),
         recent_activity=lead.notes or "žiadna",
     )
-    if orchestrator.backend == "mock":
-        base = 50
-        if lead.ico:
-            base += 10
-        if lead.email:
-            base += 10
-        if lead.sector:
-            base += 5
-        if lead.company_size and any(c.isdigit() for c in str(lead.company_size)):
-            base += 5
-        return float(min(100, base))
-
     res = orchestrator.generate(prompt, model_hint="7b", max_tokens=200, temperature=0.3)
-    text = res.get("text", "")
-    m = re.search(r"(\d{1,3})\s*/\s*100", text) or re.search(r"\b(\d{1,3})\b", text)
-    if m:
-        return float(min(100, max(0, int(m.group(1)))))
-    return 0.0
+    parsed = parse_score(res.get("text", ""))
+    if parsed is None:
+        logger.warning(
+            "LLM score for lead %s unparseable; using heuristic", lead.id
+        )
+        return _heuristic_score(lead)
+    return parsed

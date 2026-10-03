@@ -74,12 +74,16 @@ export default function LeadsPage({ token }: { token: string }) {
   }
 
   function exportXlsx() {
+    // Neutralise spreadsheet formula injection: a lead named "=cmd|'/c calc'!A1"
+    // would otherwise execute when the file is opened in Excel/LibreOffice.
+    const safe = (v: string) =>
+      /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
     const rows = leads.map((l) => ({
       id: l.id,
-      company: l.company_name,
-      ico: l.ico ?? "",
-      email: l.email ?? "",
-      sector: l.sector ?? "",
+      company: safe(l.company_name),
+      ico: safe(l.ico ?? ""),
+      email: safe(l.email ?? ""),
+      sector: safe(l.sector ?? ""),
       score: l.score ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);

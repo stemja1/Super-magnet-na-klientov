@@ -13,7 +13,6 @@ app.db
 *.db
 *.pkl
 embeddings_store.pkl
-
 # ---- Models (large binaries, do not commit) ----
 models/gguf/
 *.gguf
@@ -44,3 +43,7 @@ frontend/src-tauri/target/
 # OAuth token stores (local only)
 .gmail_tokens.json
 .google_tokens.json
+
+# Local env (dev.env je šablóna, .env obsahuje reálne hodnoty)
+.env
+*.local

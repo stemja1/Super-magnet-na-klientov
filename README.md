@@ -1,30 +1,70 @@
 # Super magnet na klientov
 
 **Lokálny, modulárny, open-source Apollo.io klon optimalizovaný pre slovenský B2B trh**
-(ORSR, FinStat, Živnostenský register). Všetka LLM inference prebieha **lokálne**
+(ORSR, Živnostenský register). Všetka LLM inference prebieha **lokálne**
 cez [llama.cpp](https://github.com/ggerganov/llama.cpp) — žiadny cloud pre modely.
+
+> ⚠️ **Budú k úprimní:** repozitár má funkčný backbone (auth, leady, sekvencie,
+> workflow, export, embeddings) a 95 testov, ale **chýba mu zdroj dát** —
+> aplikácii nevie nájsť firmy, vie len importovať CSV. Toto je najväčší
+> rozdiel oproti Apollo.io. Zoznam ďalších medzier je nižšie.
 
 > 🎯 **Cieľový hardvér:** AMD Ryzen 5 5600 · 16 GB RAM · RX 7700 XT (12 GB VRAM).
 > 📦 **Licencia:** MIT (pozri [`LICENSE`](./LICENSE)); použité open-source modely
 > podliehajú vlastným licenciám (viď [`models/README.md`](./models/README.md)).
 
+
 ---
 
-## ✨ Čo tento repozitár obsahuje (Sprint 0 / prvý artefakt)
+## ✨ Čo tento repozitár obsahuje
 
-Toto je **prvý bežný artefakt** podľa špecifikácie. Obsahuje:
+Stav k **2026-10-03** — Sprinty 0–3 implementované. Kód, unit testy, dokumentácia
+a CI sú hotové; viacero modulov však **beží v mock/sandbox režime** a niektoré
+body pôvodnej špecifikácie (pozri nižšie) **chýbajú**.
 
-- ✅ `README.md` s prehľadom a inštalačnými krokmi
-- ✅ `infrastructure/docker-compose.yml` (backend, redis, db)
-- ✅ **Minimálny FastAPI backend** s `POST /api/llm/prompt` → volá llama.cpp
-  (mock fallback, ak model chýba)
-- ✅ **Minimálny React + Tauri frontend** s jednou stránkou na odoslanie promptu
-- ✅ `models/download_and_quantize.sh` (inštrukcie, nestahuje bez súhlasu)
-- ✅ **Testy** pre backend endpoint (pytest, 7 testov)
-- ✅ **OpenAPI spec** pre implementované endpointy (`docs/api_spec.yaml`)
+### Reálne funguje
 
-Ďalšie moduly (auth, leady, enrichment, email, export, workflow, transkripcia)
-sú rozvrhnuté v roadmape nižšie a v [`docs/architecture.md`](./docs/architecture.md).
+- **Auth** — PBKDF2-SHA256 heslá + JWT (HS256), rate limit na prihlásenie,
+  CORS cez explicitný zoznam, `JWT_SECRET` povinný mimo development
+- **Leads** — CRUD, CSV import (aj s BOM), filter, LLM lead scoring 0–100
+- **Sequences** — enroll/run, A/B varianty, idempotentný enroll, izolácia
+  zlyhaní v dávke
+- **Workflow builder** — `score`, `send_email`, `enrich`, `log`, `wait`
+  (reálne pozastavenie s pokračovaním), `condition` s vnorenými vetvami
+- **Embeddings + RAG** — sentence-transformers/FAISS s numpy fallbackom,
+  `use_rag` naozaj číta z vektorového store, endpoint `/api/embeddings/info`
+  hlási, či sú vektory sémantické
+- **Deliverability** — SPF/DKIM/DMARC report
+- **Export** — CSV (s ochranou proti CSV injection), XLSX (SheetJS),
+  Google Sheets/Docs
+- **Transkripcia** — whisper.cpp + LLM call insights
+- **CI** — `.github/workflows/ci.yml`: pytest + typecheck/build/lint
+
+### Len mock / sandbox (neposiela, nestahuje, nevyhľadáva)
+
+- **LLM** — bez GGUF modelu vracia `[MOCK]` text. Žiadna reálna inferencia.
+- **ORSR** — scrapuje HTML z `or.sr` heuristickým regexom (nemá verejné API).
+- **Gmail** — bez `GMAIL_CLIENT_ID/SECRET` je `mode: sandbox`.
+- **Whisper** — bez `WHISPER_MODEL` vracia simulovaný prepis.
+- **Google Sheets/Docs** — sandbox odpoveď.
+
+### Chýba (a je to dôležité)
+
+- **Zdroj dát.** Apollo.io je predovšetkým *databáza* firiem a kontaktov na
+  vyhľadávanie. Táto aplikácia vie len importovať CSV, ktoré si musíš sám
+  zbierať. Bez zdroja dát to nie je Apollo klon.
+- **Automatické spúšťanie sekvencií** — chýba Celery worker a plánovač;
+  `POST /api/sequences/{id}/run` sa volá ručne.
+- **GDPR pre e-mail** — odhlásenie, bounce handling, suppression list, súhlas.
+  Bez toho hrozí, že emaily skončia v spame.
+- **Šifrovanie v pokoji (AES-256)** a **audit log** — sľúbené v pôvodnom
+  README, v kóde nie sú.
+- **Tauri desktop build** — `frontend/src-tauri/` neexistuje, `tauri build`
+  zlyhá.
+- **HubSpot/CRM sync, reporty** — nahlásované, neimplementované.
+
+Podrobný rozpad je v [`docs/architecture.md`](./docs/architecture.md).
+
 
 ---
 
@@ -32,15 +72,17 @@ sú rozvrhnuté v roadmape nižšie a v [`docs/architecture.md`](./docs/architec
 
 | Vrstva | Technológia |
 |--------|-------------|
-| Frontend | React + TypeScript + Tailwind CSS + Tauri (desktop) |
-| Backend | FastAPI (Python) + Uvicorn; Celery + Redis (background) |
-| LLM runtime | llama.cpp / GGUF (kvantizované 4/8-bit) |
-| Embeddings / Vector DB | sentence-transformers + FAISS |
-| ASR | whisper.cpp (transkripcia) |
+| Frontend | React 18 + TypeScript + Tailwind CSS (Tauri desktop — rozpracované) |
+| Backend | FastAPI (Python 3.11) + Uvicorn |
+| LLM runtime | llama.cpp / GGUF (kvantizované 4/8-bit), mock fallback |
+| Embeddings / Vector store | sentence-transformers + FAISS (numpy fallback) |
+| ASR | whisper.cpp (`whisper-cli`) |
 | DB | SQLite (MVP) / PostgreSQL (produkcia) |
-| Export | SheetJS (XLSX), Google Sheets/Docs API |
-| Integrácie | HubSpot, Gmail, Microsoft Graph (OAuth) |
-| CI | GitHub Actions (lint, testy, build) |
+| Export | SheetJS 0.20.3 (XLSX), Google Sheets/Docs API |
+| Integrácie | Gmail, Google Sheets/Docs (OAuth) |
+| CI | GitHub Actions (pytest + typecheck/build/lint) |
+| Plánované | Celery + Redis (scheduler), HubSpot/CRM sync |
+
 
 ---
 
@@ -53,6 +95,8 @@ docker compose -f infrastructure/docker-compose.yml up --build
 # Redis:              localhost:6379
 # PostgreSQL (vol.):  localhost:5432
 ```
+> Porty sú publikované len na `127.0.0.1`. Docker Compose nespúšťa frontend —
+> ten beží cez `npm run dev` (bod B) alebo Tauri.
 
 ### B) Lokálne (bez Docker)
 ```bash
@@ -60,12 +104,13 @@ docker compose -f infrastructure/docker-compose.yml up --build
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+uvicorn app.main:app --host 127.0.0.1 --port 8000 &
 
 # Frontend
 cd frontend
 npm install && npm run dev   # http://localhost:1420
 ```
+
 
 ### C) Jednoklikový inštalátor (Linux/WSL/macOS)
 ```bash
@@ -82,11 +127,15 @@ bash install.sh
 ```bash
 cd models
 bash download_and_quantize.sh --list                 # dostupné predvoľby
-bash download_and_quantize.sh download --preset 7b   # Mistral-7B Q4_K_M
-export LLM_MODEL_PATH="$PWD/gguf/mistral-7b-instruct-v0.3.Q4_K_M.gguf"
+bash download_and_quantize.sh download --preset 7b   # Mistral-7B Q4_K_M (mirror bartowski)
+export LLM_MODEL_PATH="$PWD/gguf/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf"
 export LLM_GPU_LAYERS=-1                             # RX 7700 XT
 ```
-Podrobnosti: [`models/README.md`](./models/README.md).
+
+> ⚠️ Pôvodné predvoľby `TheBloke/*` boli z HuggingFace **odstránené** (HTTP 401).
+> Skript teraz používa mirror-y `bartowski/*` a pred stiahnutím veľkého súboru
+> overí dostupnosť repozitára. Podrobnosti: [`models/README.md`](./models/README.md).
+
 
 ---
 
@@ -120,14 +169,17 @@ curl http://localhost:8000/api/llm/status
 
 **Registrácia + login (JWT)**
 ```bash
+# `role` sa NEPOSIELA — prvý účet na čistej inštalácii sa stane adminom,
+# každý ďalší je bežný používateľ.
 curl -X POST http://localhost:8000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"password123","role":"admin"}'
+  -d '{"username":"admin","password":"password123"}'
 
 TOK=$(curl -s -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"password123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
 ```
+
 
 **Vytvorenie leadu (ORSR enrichment, ak je IČO)**
 ```bash
@@ -148,17 +200,28 @@ curl -X POST http://localhost:8000/api/leads/import \
   -F "file=@leads.csv;type=text/csv"
 ```
 
-**Embeddings: upsert + search**
+**Embeddings: stav, upsert, search**
 ```bash
+# Skutočný stav: backend hlási či sú vektory sémantické alebo len hashované
+curl http://localhost:8000/api/embeddings/info -H "Authorization: Bearer $TOK"
+# {"backend":"hashing","semantic":false,"dim":256,"documents":0,"warning":"..."}
+
 curl -X POST http://localhost:8000/api/embeddings/upsert \
   -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
-  -d '{"doc_id":"n1","text":"Lead scoring pre IT firmu na Slovensku"}'
+  -d '{"doc_id":"n1","text":"Lead scoring pre IT firmu na Slovensku","metadata":{"text":"Lead scoring pre IT firmu na Slovensku"}}'
 
 curl "http://localhost:8000/api/embeddings/search?q=IT%20firma&top_k=3" \
   -H "Authorization: Bearer $TOK"
+
+curl -X DELETE http://localhost:8000/api/embeddings/n1 -H "Authorization: Bearer $TOK"
 ```
 
+> `upsert` je **idempotentný** — rovnaký `doc_id` sa nahradí, nie zduplikuje.
+> Na `?q=` v `search` sa používa `metadata.text`; bez neho sa dokument nedá
+> použiť ako RAG kontext.
+
 > 🔒 Endpointy `/api/leads` a `/api/embeddings` vyžadujú JWT (`Authorization: Bearer <token>`).
+
 
 ### Sprint 2 — Email, sekvencie, export
 
@@ -221,6 +284,25 @@ curl -X POST http://localhost:8000/api/workflows/execute \
   -d "{\"workflow_id\":$WF,\"lead_id\":1}"
 ```
 
+**Workflow s `wait` — pozastavenie a pokračovanie**
+```bash
+WF2=$(curl -s -X POST http://localhost:8000/api/workflows \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"name":"Nurture","definition":{"steps":[{"type":"log","message":"prvý email"},{"type":"wait","hours":72},{"type":"send_email","subject":"Follow-up","body":"Dobrý deň"}]}}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+
+# 1. beh: zastaví sa na wait, vráti status=waiting + resume_at
+curl -X POST http://localhost:8000/api/workflows/execute \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d "{\"workflow_id\":$WF2,\"lead_id\":1}"
+
+# 2. beh po uplynutí resume_at: pokračuje od kroku PO wait
+curl -X POST http://localhost:8000/api/workflows/execute \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d "{\"workflow_id\":$WF2,\"lead_id\":1}"
+```
+
+
 **A/B sekvencia + report**
 ```bash
 SID=$(curl -s -X POST http://localhost:8000/api/sequences \
@@ -245,15 +327,25 @@ curl -X POST http://localhost:8000/api/transcription/insights \
   -d '{"transcript":"Zákazník má záujem o produkt a čaká na cenovú ponuku."}'
 ```
 
+> ⚠️ **Sekvencie sa nespúšťajú automaticky.** `POST /api/sequences/{id}/run`
+> treba zavolať ručne (alebo z plánovača). Celery worker je v pláne.
+> Rovnako chýba **GDPR**: odhlásenie, bounce handling a suppression list.
+> Pred hromadným posielaním emailov to treba doplniť.
+
+
 
 ---
 
 ## 🧪 Testovanie
 
 ```bash
-cd backend && pytest          # 42 testov (mock backend, žiadne sťahovanie)
+cd backend && pytest          # 95 testov (mock backend, bez stahovania modelov)
 cd frontend && npm run build  # TypeScript + Vite build
+cd frontend && npm run lint   # ESLint
 ```
+
+Rovnaké kontroly bežia automaticky v CI pri každom pushu/PR.
+
 
 ---
 
@@ -261,24 +353,35 @@ cd frontend && npm run build  # TypeScript + Vite build
 
 | Sprint | Výstup | Stav |
 |--------|--------|------|
-| **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ commit `eca9d3d` |
-| **1 — MVP core** | Auth (JWT), lead CRUD, CSV import, ORSR connector, LLM Orchestrator (7B), FAISS embeddings | ✅ implementované (tento commit) |
-| **2** | Gmail/OAuth integrácia, sekvencie, dashboard, export XLSX (SheetJS) / Google Sheets / Docs | ✅ implementované (tento commit) |
-| **3** | Workflow builder, A/B testy sekvencií, deliverability checker, transkripcia (whisper.cpp) + call insights | ✅ implementované (tento commit) |
-| **3** | Workflow builder, A/B testy, deliverability, transkripcia | 📋 plánované |
-| **4** | HubSpot sync, reports, Tauri packaging, inštalátory | 📋 plánované |
+| **0 — Setup** | Repo scaffold, Docker Compose, FastAPI, React, README | ✅ `eca9d3d` |
+| **1 — MVP core** | Auth (JWT), lead CRUD, CSV import, ORSR connector, LLM Orchestrator, embeddings | ✅ `575dab7` |
+| **2** | Gmail/OAuth, sekvencie, dashboard, export | ✅ `9a1d5bb` |
+| **3** | Workflow builder, A/B testy, deliverability, transkripcia | ✅ `142f3a8` |
+| **4 — Stabilizácia** | Bezpečnostné guards, oprava P0 bugov, CI, `xlsx` CVE, modely mirror | ✅ táto větev |
+| **5 — Produkt** | **Zdroj dát**, Celery scheduler, GDPR (unsubscribe/bounce), model `Company`/`Contact`, audit log, Tauri packaging | 📋 plánované |
+| **6 — Integrácie** | CRM sync (HubSpot/Pipedrive), reporty, SSO | 📋 plánované |
 
-Každý modul bude mať: kód, unit + integračné testy, dokumentáciu, curl príklady
-a E2E demo scenár (import CSV → enrichment → scoring → email → export XLSX).
+Každý modul má: kód, unit + integračné testy, dokumentáciu a curl príklady.
+
 
 ---
 
-## 🔐 Bezpečnosť a súkromie (§10)
+## 🔐 Bezpečnosť a súkromie
 
-- DB súbory a nahrávky šifrované **AES-256**; kľúč lokálne v chránenom súbore.
-- LLM inference **výhradne lokálne**; žiadne cloud závislosti pre modely.
-- Externé API (HubSpot, Google, Gmail) len cez **OAuth**.
-- Možnosť vymazať všetky osobné údaje; audit logy admin akcií.
+**Implementované:** PBKDF2-SHA256 heslá, JWT s povinným `JWT_SECRET` mimo
+development, explicitný CORS zoznam (wildcard odmietnutý), rate limit na login,
+blokáda self-assign role, overenie OAuth `state` proti CSRF, tokeny s právami
+`0600`, ochrana proti CSV injection, LLM cache s obmedzenou veľkosťou.
+
+**Ešte chýba** (sľúbené v pôvodnej špecifikácii, ale neimplementované):
+
+- Šifrovanie DB a nahrávok AES-256
+- Audit log administrátorských akcií
+- Právo na výmaz osobných údajov
+- GDPR pre e-mail: odhlásenie, bounce, suppression list, súhlas
+
+Podrobnosti: [`docs/deployment.md`](./docs/deployment.md) §7.
+
 
 ---
 
@@ -286,7 +389,8 @@ a E2E demo scenár (import CSV → enrichment → scoring → email → export X
 
 ```
 backend/        FastAPI app, služby, testy
-frontend/       React + Tailwind + Tauri
+frontend/       React + Tailwind (Tauri config pripravený, src-tauri chýba)
+.github/        CI workflow (pytest + typecheck/build/lint)
 infrastructure/ docker-compose, dev.env
 models/         download & quantize skripty
 docs/           architecture, OpenAPI spec, deployment

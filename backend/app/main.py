@@ -40,6 +40,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+logger.info("CORS origins: %s", settings.CORS_ORIGINS or "(none — same-origin only)")
+
 app.include_router(llm.router, prefix="/api")
 app.include_router(auth.router)
 app.include_router(leads.router)

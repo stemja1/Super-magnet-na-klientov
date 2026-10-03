@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, status, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -69,10 +70,28 @@ def delete_lead(lead_id: int, db: Session = Depends(get_db)):
     return {"deleted": lead_id}
 
 
+MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
 @router.post("/import", status_code=status.HTTP_202_ACCEPTED)
-async def import_leads(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def import_leads(
+    file: UploadFile = File(...),
+    enrich: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Import leads from CSV.
+
+    Enrichment performs one ORSR HTTP request per row, so it runs in a worker
+    thread to keep the event loop responsive; pass ``enrich=false`` for large
+    files.
+    """
     content = await file.read()
-    return leads_svc.import_csv(db, content)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"CSV je príliš veľký (max {MAX_IMPORT_BYTES // (1024 * 1024)} MB)",
+        )
+    return await run_in_threadpool(leads_svc.import_csv, db, content, enrich)
 
 
 @router.post("/{lead_id}/score")

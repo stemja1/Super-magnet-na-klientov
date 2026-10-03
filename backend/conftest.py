@@ -11,6 +11,7 @@ for f in (_DB, _EMB):
     if f.exists():
         f.unlink()
 os.environ["DATABASE_URL"] = f"sqlite:///{_DB}"
+os.environ["APP_ENV"] = "test"
 os.environ["ORSR_MOCK"] = "1"
 os.environ["JWT_SECRET"] = "test-secret"
 os.environ["EMBEDDINGS_PATH"] = str(_EMB)
@@ -27,14 +28,15 @@ from app.main import app  # noqa: E402
 init_db()
 
 
-def _make_user(client: TestClient) -> dict:
+def _make_user(client: TestClient, username: str | None = None) -> dict:
+    """Register + log in a throwaway user and return its auth headers."""
     import uuid
 
-    username = f"user_{uuid.uuid4().hex[:10]}"
+    username = username or f"user_{uuid.uuid4().hex[:10]}"
     password = "password123"
     r = client.post(
         "/api/auth/register",
-        json={"username": username, "password": password, "role": "admin"},
+        json={"username": username, "password": password},
     )
     assert r.status_code == 201, r.text
     r = client.post("/api/auth/login", json={"username": username, "password": password})

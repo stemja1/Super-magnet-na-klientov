@@ -14,7 +14,7 @@ export default function AuthForm({ onAuth }: { onAuth: (t: string) => void }) {
       const res: AuthResponse =
         mode === "login"
           ? await login(username, password)
-          : await register(username, password, "user");
+          : await register(username, password);
       onAuth(res.access_token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Neznáma chyba");

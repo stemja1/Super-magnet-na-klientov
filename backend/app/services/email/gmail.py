@@ -46,13 +46,14 @@ class GmailConnector:
     def __init__(self, client: Optional[GoogleOAuthClient] = None) -> None:
         self.client = client or get_client()
 
-    def send_email(self, to: str, subject: str, body: str, from_email: str = "me") -> dict:
+    def send_email(self, to: str, subject: str, body: str) -> dict:
         if self.client.mode() == "sandbox":
             return {"message_id": f"sandbox-{uuid.uuid4().hex[:12]}", "mode": "sandbox"}
 
         msg = email.message.EmailMessage()
         msg["To"] = to
-        msg["From"] = from_email
+        # No From header: Gmail fills in the authenticated mailbox. Writing
+        # "From: me" produces a malformed RFC822 message that the API rejects.
         msg["Subject"] = subject
         msg.set_content(body)
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()

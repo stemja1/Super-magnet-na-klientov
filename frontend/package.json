@@ -13,15 +13,21 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "comments": {
+    "xlsx": "Pinned to the SheetJS CDN tarball on purpose. The npm registry copy is stuck at 0.18.5, which is affected by CVE-2023-30533 (prototype pollution) and CVE-2024-22363 (ReDoS). Fixed releases only exist on cdn.sheetjs.com."
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.6.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "postcss": "^8.4.45",
     "tailwindcss": "^3.4.10",
     "typescript": "^5.5.4",

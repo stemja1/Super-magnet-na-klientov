@@ -9,10 +9,16 @@ _CFG = ConfigDict(protected_namespaces=(), from_attributes=True)
 
 
 class RegisterRequest(BaseModel):
+    """Self-service registration payload.
+
+    ``role`` is intentionally **not** accepted from the client: it would allow
+    anyone to self-assign admin. The first account created on a fresh install
+    becomes the admin (bootstrap), every later one is a regular user.
+    """
+
     model_config = _CFG
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
-    role: str = "user"  # user | admin
 
 
 class LoginRequest(BaseModel):

@@ -3,20 +3,30 @@
 No google-* SDK dependency: token exchange and API calls go through urllib.
 In sandbox mode (no client credentials) connectors simulate calls so the whole
 pipeline is runnable offline / in CI.
+
+The ``state`` parameter is generated per authorization request and verified on
+callback (CSRF protection). Tokens are stored in a local file that is created
+with owner-only permissions where the platform supports it.
 """
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import os
 import secrets
+import threading
 import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+logger = logging.getLogger("google_oauth")
+
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+STATE_TTL_SECONDS = 600
 
 
 @dataclass
@@ -42,6 +52,8 @@ class GoogleOAuthClient:
         self.scopes = scopes
         self.token_path = token_path or os.getenv("GOOGLE_TOKEN_PATH", ".google_tokens.json")
         self.tokens = self._load()
+        self._pending_states: Dict[str, float] = {}
+        self._lock = threading.Lock()
 
     # ---- config ----
     def is_configured(self) -> bool:
@@ -53,6 +65,13 @@ class GoogleOAuthClient:
     # ---- OAuth flow ----
     def get_auth_url(self, state: Optional[str] = None) -> tuple[str, str]:
         state = state or secrets.token_urlsafe(16)
+        now = time.time()
+        with self._lock:
+            self._pending_states = {
+                s: ts for s, ts in self._pending_states.items()
+                if now - ts < STATE_TTL_SECONDS
+            }
+            self._pending_states[state] = now
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
@@ -63,6 +82,29 @@ class GoogleOAuthClient:
             "state": state,
         }
         return GOOGLE_AUTH_ENDPOINT + "?" + urllib.parse.urlencode(params), state
+
+    def consume_state(self, state: str) -> bool:
+        """Validate a callback ``state`` exactly once, then discard it.
+
+        Comparing with hmac.compare_digest keeps the check constant-time; states
+        expire so a leaked callback URL cannot be replayed later.
+        """
+        if not state:
+            return False
+        now = time.time()
+        with self._lock:
+            self._pending_states = {
+                s: ts for s, ts in self._pending_states.items()
+                if now - ts < STATE_TTL_SECONDS
+            }
+            match = next(
+                (s for s in self._pending_states if hmac.compare_digest(s, state)), None
+            )
+            if match is None:
+                logger.warning("OAuth callback rejected: unknown or expired state")
+                return False
+            del self._pending_states[match]
+            return True
 
     def exchange_code(self, code: str) -> GoogleTokens:
         data = {
@@ -139,12 +181,17 @@ class GoogleOAuthClient:
         try:
             with open(self.token_path, "r", encoding="utf-8") as f:
                 return GoogleTokens(**json.load(f))
-        except Exception:
+        except FileNotFoundError:
+            return GoogleTokens()
+        except Exception as exc:
+            logger.warning("Could not read %s: %s", self.token_path, exc)
             return GoogleTokens()
 
     def _save(self) -> None:
+        """Persist tokens, restricting access to the current user where possible."""
         try:
-            with open(self.token_path, "w", encoding="utf-8") as f:
+            fd = os.open(self.token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(self.tokens.__dict__, f)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not write %s: %s", self.token_path, exc)

@@ -4,7 +4,7 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
-    "distDir": "../dist"
+    "distDir": "dist"
   },
   "package": {
     "productName": "Super magnet na klientov",
@@ -14,7 +14,7 @@
     "allowlist": {
       "all": false,
       "http": {
-        "all": true,
+        "all": false,
         "request": true,
         "scope": ["http://localhost:8000/*", "http://127.0.0.1:8000/*"]
       }
@@ -28,7 +28,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'"
     }
   }
 }

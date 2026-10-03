@@ -27,16 +27,29 @@ const NAV: View[] = [
   "prompt",
 ];
 
+// Token lives in sessionStorage, not localStorage: it is dropped when the window
+// closes and is not readable by other origins' scripts that persist on disk.
+// (A cookie with HttpOnly would be stronger still — see docs/roadmap.)
+const TOKEN_KEY = "smk_token";
+
+function readToken(): string {
+  const stored = sessionStorage.getItem(TOKEN_KEY);
+  if (!stored) return "";
+  // Drop tokens left behind by older builds that used localStorage.
+  localStorage.removeItem(TOKEN_KEY);
+  return stored;
+}
+
 export default function App() {
-  const [token, setToken] = useState<string>(localStorage.getItem("smk_token") || "");
+  const [token, setToken] = useState<string>(readToken);
   const [view, setView] = useState<View>("dashboard");
 
   function handleAuth(t: string) {
-    localStorage.setItem("smk_token", t);
+    sessionStorage.setItem(TOKEN_KEY, t);
     setToken(t);
   }
   function logout() {
-    localStorage.removeItem("smk_token");
+    sessionStorage.removeItem(TOKEN_KEY);
     setToken("");
   }
 

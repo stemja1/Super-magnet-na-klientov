@@ -16,14 +16,16 @@ HF="${HF_CLI:-hf}"   # 'hf' (huggingface_hub CLI) alebo 'curl'
 mkdir -p "$GGUF_DIR"
 
 # ---- Predvoľby modelov (repo + názov GGUF súboru) --------------------------
+# POZOR: pôvodné repozitáre TheBloke/* boli z HuggingFace odstránené (HTTP 401).
+# Používaj komunitné mirror-y, ktoré stále existujú.
 declare -A PRESET_REPO=(
-  ["7b"]="TheBloke/Mistral-7B-Instruct-v0.3-GGUF"
-  ["3b"]="TheBloke/Qwen2.5-3B-Instruct-GGUF"
+  ["7b"]="bartowski/Mistral-7B-Instruct-v0.3-GGUF"
+  ["3b"]="bartowski/Qwen2.5-3B-Instruct-GGUF"
   ["7b-oh"]="TheBloke/OpenHermes-2.5-Mistral-7B-GGUF"
 )
 declare -A PRESET_FILE=(
-  ["7b"]="mistral-7b-instruct-v0.3.Q4_K_M.gguf"
-  ["3b"]="qwen2.5-3b-instruct-q4_k_m.gguf"
+  ["7b"]="Mistral-7B-Instruct-v0.3-Q4_K_M.gguf"
+  ["3b"]="Qwen2.5-3B-Instruct-Q4_K_M.gguf"
   ["7b-oh"]="openhermes-2.5-mistral-7b.Q4_K_M.gguf"
 )
 
@@ -61,6 +63,17 @@ cmd_download() {
     exit 1
   fi
   local out="$GGUF_DIR/$file"
+  # Pred stiahnutím veľkého súboru over, že repozitár naozaj existuje —
+  # TheBloke repozitáre boli odstránené a download by ticho zlyhal.
+  if command -v curl >/dev/null 2>&1; then
+    local code
+    code="$(curl -s -o /dev/null -w '%{http_code}' "https://huggingface.co/api/models/$repo")"
+    if [[ "$code" != "200" ]]; then
+      echo "CHYBA: repozitár '$repo' nie je dostupný (HTTP $code)." >&2
+      echo "Hľadaj mirror na https://huggingface.co/models?search=gguf" >&2
+      exit 1
+    fi
+  fi
   echo "Sťahujem $repo / $file -> $out"
   if command -v huggingface-cli >/dev/null 2>&1; then
     huggingface-cli download "$repo" "$file" --local-dir "$GGUF_DIR" --local-dir-use-symlinks False

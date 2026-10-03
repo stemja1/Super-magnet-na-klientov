@@ -15,7 +15,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,28 +28,38 @@ logger = logging.getLogger("llm_orchestrator")
 
 VALID_HINTS = ("7b", "3b")
 
-# --- In-memory RAG corpus (placeholder for FAISS, wired in Sprint 1) ------
-_RAG_CORPUS: List[Dict[str, str]] = []
+RAG_MAX_DOCS = 3
+RAG_MAX_DOC_CHARS = 1200
 
 
-def register_rag_documents(docs: List[Dict[str, str]]) -> None:
-    """Seed the RAG corpus. Replaced by FAISS ``upsert`` in Sprint 1."""
-    _RAG_CORPUS.extend(docs)
+def _retrieve(query: str, top_k: int = RAG_MAX_DOCS) -> List[str]:
+    """Semantic retrieval over the local vector store.
 
-
-def _retrieve(query: str, top_k: int = 3) -> List[str]:
-    """Keyword-overlap retrieval over the in-memory corpus (placeholder)."""
-    if not _RAG_CORPUS:
+    Imported lazily to keep the orchestrator importable without numpy/FAISS and
+    to avoid a circular import (embeddings has no dependency on this module).
+    Returns an empty list when the store is empty or unreachable.
+    """
+    try:
+        from app.services.embeddings import embedder, store
+    except Exception as exc:  # pragma: no cover - optional dependency
+        logger.warning("RAG unavailable: %s", exc)
         return []
-    q_tokens = set(query.lower().split())
-    scored = []
-    for doc in _RAG_CORPUS:
-        text = doc.get("text", "")
-        overlap = len(q_tokens & set(text.lower().split()))
-        if overlap:
-            scored.append((overlap, text))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [text for _, text in scored[:top_k]]
+
+    if len(store) == 0:
+        logger.debug("RAG: vector store empty, skipping retrieval")
+        return []
+    try:
+        vec = embedder.embed([query])[0]
+        hits = store.search(vec, top_k)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("RAG retrieval failed: %s", exc)
+        return []
+    # Only documents whose text was stored can be used as context.
+    return [
+        (h.get("metadata") or {}).get("text", "")[:RAG_MAX_DOC_CHARS]
+        for h in hits
+        if (h.get("metadata") or {}).get("text")
+    ]
 
 
 @dataclass
@@ -72,12 +84,16 @@ class GenerationResult:
         }
 
 
+CACHE_MAX_ENTRIES = 128
+
+
 class LLMOrchestrator:
     def __init__(self) -> None:
         self.model = None
         self.backend = "mock"
         self.model_path = ""
-        self._cache: Dict[str, GenerationResult] = {}
+        self._cache: "OrderedDict[str, GenerationResult]" = OrderedDict()
+        self._lock = threading.Lock()  # llama.cpp context is not thread-safe
         self._load_model()
 
     # ---- model loading / fallback -------------------------------------
@@ -116,7 +132,7 @@ class LLMOrchestrator:
     @staticmethod
     def _build_rag_prompt(query: str, contexts: List[str]) -> str:
         context_block = "\n\n".join(
-            f"[Dokument {i+1}]\n{c}" for i, c in enumerate(contexts[:3])
+            f"[Dokument {i + 1}]\n{c}" for i, c in enumerate(contexts[:RAG_MAX_DOCS])
         )
         return (
             "Nasledujúce dokumenty sú kontextom úlohy.\n\n"
@@ -161,7 +177,7 @@ class LLMOrchestrator:
         model_hint = model_hint if model_hint in VALID_HINTS else settings.LLM_DEFAULT_HINT
 
         if use_rag:
-            rag_context = _retrieve(prompt, top_k=3)
+            rag_context = _retrieve(prompt, top_k=RAG_MAX_DOCS)
             if rag_context:
                 prompt = self._build_rag_prompt(prompt, rag_context)
 
@@ -172,31 +188,37 @@ class LLMOrchestrator:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        if cache_key in self._cache:
-            logger.debug("LLM cache hit")
-            cached = self._cache[cache_key]
-            return {**cached.to_dict(), "cached": True}
+        with self._lock:
+            if cache_key in self._cache:
+                logger.debug("LLM cache hit")
+                self._cache.move_to_end(cache_key)
+                return {**self._cache[cache_key].to_dict(), "cached": True}
 
-        if self.backend == "llama_cpp" and self.model is not None:
-            start = time.time()
-            out = self.model(
-                prompt, max_tokens=max_tokens, top_k=top_k, temperature=temperature
-            )
-            elapsed = time.time() - start
-            result = GenerationResult(
-                text=out["choices"][0]["text"],
-                backend=self.backend,
-                model=os.path.basename(self.model_path),
-                model_hint=model_hint,
-                tokens_used=int(out.get("usage", {}).get("completion_tokens", 0)),
-                finish_reason=out["choices"][0].get("finish_reason"),
-            )
-            logger.info("llama_cpp generated %d tokens in %.2fs", result.tokens_used, elapsed)
-        else:
-            result = self._mock_generate(prompt, model_hint)
+            if self.backend == "llama_cpp" and self.model is not None:
+                start = time.time()
+                out = self.model(
+                    prompt, max_tokens=max_tokens, top_k=top_k, temperature=temperature
+                )
+                elapsed = time.time() - start
+                result = GenerationResult(
+                    text=out["choices"][0]["text"],
+                    backend=self.backend,
+                    model=os.path.basename(self.model_path),
+                    model_hint=model_hint,
+                    tokens_used=int(out.get("usage", {}).get("completion_tokens", 0)),
+                    finish_reason=out["choices"][0].get("finish_reason"),
+                )
+                logger.info(
+                    "llama_cpp generated %d tokens in %.2fs", result.tokens_used, elapsed
+                )
+            else:
+                result = self._mock_generate(prompt, model_hint)
 
-        self._cache[cache_key] = result
-        return result.to_dict()
+            self._cache[cache_key] = result
+            # Bounded LRU: an unbounded cache would grow with every unique prompt.
+            while len(self._cache) > CACHE_MAX_ENTRIES:
+                self._cache.popitem(last=False)
+            return result.to_dict()
 
 
 # Module-level singleton (reloaded per worker in production).

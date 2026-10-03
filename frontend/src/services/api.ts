@@ -80,15 +80,13 @@ export async function getHealth(): Promise<HealthResponse> {
 }
 
 // ---- Auth ----
-export async function register(
-  username: string,
-  password: string,
-  role = "user"
-): Promise<AuthResponse> {
+// `role` is not sent: the backend assigns admin only to the first account on a
+// fresh install and ignores any client-supplied role.
+export async function register(username: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password, role }),
+    body: JSON.stringify({ username, password }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

@@ -7,6 +7,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -46,3 +49,42 @@ def create_access_token(sub: str, role: str, expires_min: int | None = None) -> 
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+
+
+# --- login throttling ------------------------------------------------------
+# In-memory, per-process. Enough for a single-user desktop app: it stops casual
+# brute force. A shared store would be required for a multi-worker deployment.
+class LoginThrottle:
+    def __init__(self, max_attempts: int, window_seconds: int) -> None:
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._attempts: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def _prune(self, key: str, now: float) -> deque[float]:
+        q = self._attempts[key]
+        cutoff = now - self.window_seconds
+        while q and q[0] < cutoff:
+            q.popleft()
+        return q
+
+    def retry_after(self, key: str) -> int:
+        """Seconds until another attempt is allowed; 0 when not locked out."""
+        now = time.time()
+        with self._lock:
+            q = self._prune(key, now)
+            if len(q) < self.max_attempts:
+                return 0
+            return max(1, int(self.window_seconds - (now - q[0])))
+
+    def record_failure(self, key: str) -> None:
+        now = time.time()
+        with self._lock:
+            self._prune(key, now).append(now)
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._attempts.pop(key, None)
+
+
+login_throttle = LoginThrottle(settings.LOGIN_MAX_ATTEMPTS, settings.LOGIN_LOCKOUT_SECONDS)
